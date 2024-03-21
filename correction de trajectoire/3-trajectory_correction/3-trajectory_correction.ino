@@ -15,6 +15,7 @@ float gz0,gz1=0.0;
 
 unsigned long t2=0;
 unsigned int direction = 1;
+float error_1, erreur_cumul = 0.0;
 
 //function to read one byte in I²C protocol
 int lire_byte_i2c(int addr, int RA){
@@ -101,10 +102,15 @@ void loop() {
   unsigned int checking_period = 10; //période de réalisation des contrôls en ms
   unsigned long t1,t2=0; //variable pour mesure de durée
   unsigned long mvt_duration = 3000; //durée du mouvement en ms
-  unsigned int Kp = 5; //paramètre proportionnel du correcteur PID
+  unsigned int Kp = 2; //paramètre proportionnel du correcteur PID
+  unsigned int Kd = 2; //paramètre dérivé du correcteur PID
+  unsigned int Ki = 0.5; //paramètre intégral du correcteur PID
 
+  digitalWrite(stby,0); //stabilisation du robot avant mesure de l'angle de référence
+  delay(100); //stabilisation du robot avant mesure de l'angle de référence
   //Relever l'angle de rotation par rapport à l'axe Z avant un mouvement en ligne droite
   ref_angle = get_dev_angle(tol);
+  delay(100); //stabilisation du robot après mesure de l'angle de référence
   //relever la date de départ
   t1 = millis();
   t2 = millis();//pour s'assurer que lors de la première itération, t2-t1<mvt_duration
@@ -114,10 +120,17 @@ void loop() {
     Serial.println(dev_angle);
     //Corriger la trajectoire si déviation
     float error = dev_angle-ref_angle;
+    erreur_cumul += error;
     Serial.print("error = ");
     Serial.println(error);
-    unsigned int vit_rectif_dte = -error*Kp + vit; //nouvelle vitesse à appliquer à la roue droite
-    unsigned int vit_rectif_ghe = error*Kp + vit; //nouvelle vitesse à appliquer à la roue gauche
+    //unsigned int vit_rectif_dte = -error*Kp + vit; //nouvelle vitesse à appliquer à la roue droite
+    //unsigned int vit_rectif_ghe = error*Kp + vit; //nouvelle vitesse à appliquer à la roue gauche
+    //correction dérivé + proportionnel
+    //unsigned int vit_rectif_dte = -(error-error_1)*Kd - error*Kp + vit; //nouvelle vitesse à appliquer à la roue droite
+    //unsigned int vit_rectif_ghe = (error-error_1)*Kd + error*Kp + vit; //nouvelle vitesse à appliquer à la roue gauche
+    //correcteur PID
+    unsigned int vit_rectif_dte = -erreur_cumul*Ki -(error-error_1)*Kd - error*Kp + vit; //nouvelle vitesse à appliquer à la roue droite
+    unsigned int vit_rectif_ghe = erreur_cumul*Ki + (error-error_1)*Kd + error*Kp + vit; //nouvelle vitesse à appliquer à la roue gauche
     //restriction de la variation de vit_rectif à [0;255]
     if(vit_rectif_dte>255) vit_rectif_dte=255;
     if(vit_rectif_dte<10) vit_rectif_dte=10;
@@ -146,6 +159,7 @@ void loop() {
     delay(checking_period);
     //date de fin de l'itération
     t2 = millis();
+    error_1 = error;
   }
   direction = !direction;
 }
